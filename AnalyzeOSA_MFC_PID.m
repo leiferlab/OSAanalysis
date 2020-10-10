@@ -14,10 +14,10 @@ clc
 
 % osa_fname = '20200228190116_osa_008Hzramp.txt';
 % mfc_fname = '20200228190012_MFCPID_008Hzramp.txt';
-osa_fname = '20200228192400_osa_004Hzramp.txt';
-mfc_fname = '20200228192305_MFCPID_004Hzramp.txt';
-% osa_fname = '20200228194312_osa_002Hzramp.txt';
-% mfc_fname = '20200228194211_MFCPID_002Hzramp.txt';
+% osa_fname = '20200228192400_osa_004Hzramp.txt';
+% mfc_fname = '20200228192305_MFCPID_004Hzramp.txt';
+osa_fname = '20200228194312_osa_002Hzramp.txt';
+mfc_fname = '20200228194211_MFCPID_002Hzramp.txt';
 
 %%%stepping
 % osa_fname = '20200212162428_osa_4steps.txt';
@@ -167,8 +167,8 @@ downsamp_pid = PID(closest_pos);
 % end
 
 figure
-shifted = 15;
-sensors = [1 6 11];
+shifted = 10;
+sensors = [4,5];%[1 6 11];
 Legend=cell(length(sensors*2),1);
 count = 1;
 mfc_read = downsamp_mfc(1:end);
@@ -203,17 +203,22 @@ legend(Legend)
 %% double-y plot
 figure
 dd = [1 6 11];
-yyaxis left
+subplot(5,1,[1,4])
+%yyaxis left
 % plot(sample_time,(data_h2(1:8,:))','b'); hold on;
 % plot(sample_time,(data_h2(9:16,:))','r'); hold off;
-plot(sample_time/1000,data_h2(dd,:),'b-','Linewidth',2)%raw2ppm(data_h2(dd,500),data_h2(dd,:))
-ylabel('raw readings')
-yyaxis right
-plot(time_mfc/1000,MFC_com); hold on;
-plot(time_mfc/1000,MFC_read); hold on;
-plot(time_mfc/1000,PID); hold off;
-ylabel('voltage read (MFC_{command},MFC_{read},PID)')
-title('raw h2 (T_{ramp}=125s)');
+% plot(sample_time/1000,data_h2(dd,:),'b-','Linewidth',2)%raw2ppm(data_h2(dd,500),data_h2(dd,:))
+plot(sample_time/1000, mean(all_ppm'),'b-','Linewidth',2); hold on;
+plot(time_mfc/1000,PID/2.9*200,'k-','Linewidth',2); hold off;
+ylabel('ppm')
+%yyaxis right
+set(gca,'FontSize',20);
+subplot(515)
+plot(time_mfc/1000,MFC_com*10,'Linewidth',2); hold on;
+% plot(time_mfc/1000,MFC_read*10); 
+% axis([0 1000  0 55]);  hold off;
+ylabel('flow rate (ml/min)')
+% title('raw h2 (T_{ramp}=125s)');
 set(gca,'FontSize',20); xlabel('time (s)');
 
 %% step vs. ramp
@@ -246,7 +251,7 @@ legend(Legend)
 %% plot across OSB
 figure
 osbnums = [7 6 5 4 2 3 1];%[6 7 5 4 2 3];%7:-1:2;%
-for ii = 1:7%7:-1:2
+for ii = 1:6%7:-1:2
     pruned_size = find(osbs==osbnums(ii));
     pruned_osb_num = pruned_size(1:end-mod(size(pruned_size,1),16));  %remove the last few less than 16 that might be due to termination of recording
     data_h22 = reshape(Read(pruned_osb_num,1),16,[]);  %channel by time (16 X seconds)
@@ -266,20 +271,68 @@ for ii = 1:7%7:-1:2
 end
 
 %% normalize to peak for flow rate estimation
-sgpnum = 5;
+sgpnum = 4;
+osbnums = [7 6 5 4 2 3];%[4,2,3];%[7 6 5 4 2 3 1];%7:-1:2;
 figure
-cmap = colormap(jet(6));
-osbnums = [6 7 5 4 2 3];%[7 6 5 4 2 3 1];%7:-1:2;
-for ii = 1:7
+cmap = colormap(jet(length(osbnums)));
+all_time = [];
+for ii = 1:length(osbnums)
     pruned_size = find(osbs==osbnums(ii));
     pruned_osb_num = pruned_size(1:end-mod(size(pruned_size,1),16));  %remove the last few less than 16 that might be due to termination of recording
     data_h22 = reshape(Read(pruned_osb_num,1),16,[]);  %channel by time (16 X seconds)
     data_Et2 = reshape(Read(pruned_osb_num,2),16,[]);
     sample_time2 = reshape(time_osa(pruned_osb_num),16,[]);
     sample_time2 = sample_time2(1,:)-sample_time2(1,1);
-    
-    plot(sample_time2/1000,data_h22(sgpnum,:)'./min(data_h22(sgpnum,:)), 'Color',cmap(ii,:),'LineWidth',2); hold on;
+    to_ppm = raw2ppm(data_h22(sgpnum,5)',data_h22(sgpnum,:)');
+    plot(sample_time2/1000, to_ppm'./max(to_ppm(200:end)), 'Color',cmap(ii,:),'LineWidth',2); hold on;
+%     plot(sample_time2/1000, data_h22(sgpnum,:)'./min(data_h22(sgpnum,:)), 'Color',cmap(ii,:),'LineWidth',2); hold on;
+    temp = to_ppm'./max(to_ppm(200:end));
+    all_time = [all_time; temp(350:550)];
+end
+hold off
+set(gca,'FontSize',20); 
+xlabel('time (s)');
 
+%% 
+%find timing and plot with arrows
+drawArrow = @(x,y,varargin) quiver( x(1),y(1),x(2)-x(1),y(2)-y(1),0, varargin{:} )  
+lls = [7:-1:2];
+figure
+cc = {'red','black','yellow','green','blue','magenta'};
+for ii = 1:size(all_time,1)
+    %plot(all_time(ii,:),'linewidth',2, 'color',cc{ii},'DisplayName',['OSB',num2str(lls(ii)),',SGP4'])
+    plot(all_time(ii,:),'linewidth',2, 'Color',[0 0 0]+1/7*ii,'DisplayName',['OSB',num2str(lls(ii)),',OS4'])
+    hold on
+    [minv,minp] = min(all_time(ii,:));
+    h = drawArrow([minp minp], [minv-0.05 minv-0.01],'ShowArrowHead',1,'MaxHeadSize',10, 'linewidth',2,'Color',[0 0 0]+1/7*ii);
+    set(h,'MaxHeadSize',10)
+end
+
+xlabel('time (s)');
+ylabel('ppm')
+set(gca,'FontSize',20); 
+
+
+%%
+all_ppm = [];
+sgpnums = 1:16;
+osbnum = 6;
+figure
+cmap = colormap(jet(length(sgpnums)));
+locs = zeros(1,length(sgpnums));
+for ii = 1:length(sgpnums)
+    pruned_size = find(osbs==osbnum);
+    pruned_osb_num = pruned_size(1:end-mod(size(pruned_size,1),16));  %remove the last few less than 16 that might be due to termination of recording
+    data_h22 = reshape(Read(pruned_osb_num,1),16,[]);  %channel by time (16 X seconds)
+    data_Et2 = reshape(Read(pruned_osb_num,2),16,[]);
+    sample_time2 = reshape(time_osa(pruned_osb_num),16,[]);
+    sample_time2 = sample_time2(1,:)-sample_time2(1,1);
+    to_ppm = raw2ppm(data_h22(ii,2)',data_h22(ii,:)');
+    plot(sample_time2/1000, to_ppm'./1, 'Color',cmap(ii,:),'LineWidth',2); hold on;
+%     plot(sample_time2/1000, data_h22(sgpnum,:)'./min(data_h22(sgpnum,:)), 'Color',cmap(ii,:),'LineWidth',2); hold on;
+    [~,mm] = max(to_ppm);
+    locs(ii) = mm;
+    all_ppm = [all_ppm to_ppm];
 end
 hold off
 set(gca,'FontSize',20); 
@@ -310,7 +363,7 @@ imagesc(fliplr(reshape(speeds,8,2)))
 tt = 1000;
 timeaverage = {};
 kk = 1;
-for tt = 1:1:1500
+for tt = 1:1:size(data_h2,2)
     minvals = [];
 osb_add = [7:-1:1]; %[7 1]; %[6 4 3 7 2 5];%[6 7 5 4 2 3];%[7 4 2 6 3 5];
 for ii = 1:7 %7:-1:2  %
